@@ -1,0 +1,20 @@
+# dev/ sandbox — never shipped, contributor-only
+dev/build/
+dev/external/flux/
+
+# CMake
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.vcxproj*
+*.sln
+compile_commands.json
+
+# Editor / OS noise
+.vs/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db
