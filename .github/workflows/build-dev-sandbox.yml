@@ -1,0 +1,62 @@
+name: build-dev-sandbox
+
+# Builds dev/ — the real, running FluxUI app that exercises every chart
+# widget in this package — on every push/PR that touches chart code. This
+# is a compile check, not a visual one: it catches the class of bugs that
+# were previously only found by hand (unresolved symbols from a stale
+# umbrella header, dead/UB placeholder code, CMake install-export errors).
+#
+# Windows-only for now, deliberately. The one confirmed-working build in
+# this project's history used the default MSVC/Visual-Studio-generator
+# path, which only needs curl + stb + dr + win32-specific flux sources —
+# no extra system packages. A native-Linux build additionally needs
+# SDL2/Cairo/Pango/ALSA/FFmpeg dev packages (see flux's own top-level
+# CMakeLists.txt, the FLUX_NEED_DESKTOP_LIB block) and no verified-working
+# apt package list exists yet for this project — guessing at that here
+# risks a CI job that's broken for reasons unrelated to chart code. Add a
+# Linux/macOS job once that package list has actually been confirmed.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'dev/**'
+      - '.github/workflows/build-dev-sandbox.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'dev/**'
+      - '.github/workflows/build-dev-sandbox.yml'
+  workflow_dispatch: {}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout charts (with pinned flux submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Best-effort speed-up: keyed on everything that can invalidate a
+      # correct rebuild (flux submodule pin + every CMakeLists in dev/).
+      # A stale/corrupt cache should never produce a false-green build —
+      # worst case this just costs a full rebuild, same as no cache at all.
+      - name: Cache dev/build
+        uses: actions/cache@v4
+        with:
+          path: dev/build
+          key: >-
+            windows-dev-build-
+            ${{ hashFiles('dev/external/flux/.git', 'dev/CMakeLists.txt', 'dev/config/**') }}
+
+      - name: Configure
+        working-directory: dev
+        run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+
+      - name: Build flux_app
+        working-directory: dev
+        run: cmake --build build --target flux_app --config Debug
