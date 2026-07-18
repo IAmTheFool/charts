@@ -1,0 +1,3 @@
+[submodule "dev/external/flux"]
+	path = dev/external/flux
+	url = https://github.com/IAmTheFool/flux.git
