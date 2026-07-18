@@ -40,11 +40,19 @@ public:
                        ->addCandle("Thu", 104, 112, 103, 111)
                        ->addCandle("Fri", 111, 113, 106, 108);
 
+    auto heatmap = HeatmapChart(420, 320)
+                       ->setTitle("Weekly Activity")
+                       ->setColumnLabels({"Mon", "Tue", "Wed", "Thu", "Fri"})
+                       ->addRow("Alice", {2, 5, 1, 8, 3})
+                       ->addRow("Bob", {6, 3, 7, 2, 9})
+                       ->addRow("Carla", {1, 1, 4, 6, 2})
+                       ->setOnCellClick([](int row, int col) { /* ... */ });
+
     return Box({
                    Text("FluxCharts Dev Sandbox")
                        ->setFontSize(20)
                        ->setPadding(4),
-                   Box({pie, donut, candles})
+                   Box({pie, donut, candles, heatmap})
                        ->setDisplay(Display::Flex)
                        ->setDirection(FlexDirection::Row)
                        ->setGap(16),

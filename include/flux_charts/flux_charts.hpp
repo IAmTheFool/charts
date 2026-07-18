@@ -12,4 +12,4 @@
 #include "flux_chart_common.hpp"
 #include "flux_pie_chart.hpp"
 #include "flux_candlestick_chart.hpp"
-// Future chart types (heatmap, ...) get added here as they land.
+#include "flux_heatmap_chart.hpp"
