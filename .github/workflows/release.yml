@@ -1,0 +1,91 @@
+name: release
+
+# Triggered by pushing a version tag: git tag v0.1.0 && git push origin v0.1.0
+#
+# Two jobs, in order:
+#   1. build  - same compile check as build-dev-sandbox.yml (Windows + Linux).
+#      A release job that skipped this could publish a tag nobody can
+#      actually build against, which is worse than not releasing at all.
+#   2. release - only runs if build succeeds (needs: build). Creates a
+#      GitHub Release at the pushed tag with auto-generated notes.
+#
+# charts is header-only, so there is no compiled artifact to attach here -
+# the release IS the tagged source, which flux add's `git clone --branch
+# <ref>` step (see cli/package_manager.cpp's cmd_add) consumes directly.
+# This workflow's job is validation + a visible changelog entry, not
+# artifact publishing.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout charts (with pinned flux submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            ninja-build \
+            libsdl2-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libjpeg-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libasound2-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libssl-dev \
+            pkg-config
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        working-directory: dev
+        run: cmake -B build -S . -A x64
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        working-directory: dev
+        run: cmake -B build -S . -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build flux_app (Windows)
+        if: runner.os == 'Windows'
+        working-directory: dev
+        run: cmake --build build --target flux_app --config Debug
+
+      - name: Build flux_app (Linux)
+        if: runner.os == 'Linux'
+        working-directory: dev
+        run: cmake --build build --target flux_app --parallel
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

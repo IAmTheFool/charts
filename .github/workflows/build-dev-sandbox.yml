@@ -6,15 +6,31 @@ name: build-dev-sandbox
 # were previously only found by hand (unresolved symbols from a stale
 # umbrella header, dead/UB placeholder code, CMake install-export errors).
 #
-# Windows-only for now, deliberately. The one confirmed-working build in
-# this project's history used the default MSVC/Visual-Studio-generator
-# path, which only needs curl + stb + dr + win32-specific flux sources —
-# no extra system packages. A native-Linux build additionally needs
-# SDL2/Cairo/Pango/ALSA/FFmpeg dev packages (see flux's own top-level
-# CMakeLists.txt, the FLUX_NEED_DESKTOP_LIB block) and no verified-working
-# apt package list exists yet for this project — guessing at that here
-# risks a CI job that's broken for reasons unrelated to chart code. Add a
-# Linux/macOS job once that package list has actually been confirmed.
+# Two platforms, deliberately not more:
+#
+#   - Windows and Linux are included because every chart widget in this
+#     package is pure header-only logic written entirely against flux's
+#     already-cross-platform Painter/Widget/FontCache API (fillRect,
+#     drawTextA, measureText, fillPolygonAlpha, ...) - zero platform
+#     #ifdefs anywhere in include/flux_charts/. Testing on two compilers
+#     (MSVC + GCC) with genuinely different toolchains is what catches
+#     real portability bugs (e.g. accidental MSVC-only assumptions);
+#     testing on more platforms wouldn't exercise any different code path
+#     inside THIS repo, only re-test flux's own per-platform .cpp files,
+#     which flux's own CI is already responsible for.
+#
+#   - macOS/Android/Emscripten/SSR are deliberately skipped for the same
+#     reason: no file in include/flux_charts/ touches anything specific to
+#     those platforms, so there is no unique risk here to catch, only real
+#     toolchain setup cost (NDK, Emscripten SDK) for no additional
+#     confidence about chart code specifically.
+#
+# The Linux apt package list mirrors flux's own confirmed-working Linux CI
+# workflow exactly (see flux repo's .github/workflows/linux.yml) rather
+# than being guessed - this project has been burned once already by an
+# unverified assumption (the Windows generator name) breaking CI for a
+# reason unrelated to chart code, so anything with a known-good source is
+# copied from it instead of re-derived.
 
 on:
   push:
@@ -41,10 +57,6 @@ jobs:
         with:
           submodules: recursive
 
-      # Best-effort speed-up: keyed on everything that can invalidate a
-      # correct rebuild (flux submodule pin + every CMakeLists in dev/).
-      # A stale/corrupt cache should never produce a false-green build —
-      # worst case this just costs a full rebuild, same as no cache at all.
       - name: Cache dev/build
         uses: actions/cache@v4
         with:
@@ -55,17 +67,60 @@ jobs:
 
       - name: Configure
         working-directory: dev
-        # No explicit -G here on purpose. Hardcoding a generator like
-        # "Visual Studio 17 2022" breaks the moment the runner image (or a
-        # dev machine) has a different VS version installed - exactly what
-        # happened when GitHub's windows-latest image resolved to
-        # windows-2025-vs2026 (VS2026), not VS2022. The one confirmed-working
-        # local build never passed -G at all and let CMake auto-detect
-        # whatever VS version is actually present; -A x64 alone is safe to
-        # keep since it works against CMake's auto-selected default
-        # Visual-Studio-family generator regardless of version.
+        # No explicit -G here on purpose - see the note in this file's
+        # history: hardcoding a generator like "Visual Studio 17 2022"
+        # breaks the moment the runner image (or a dev machine) has a
+        # different VS version installed. Let CMake auto-detect whatever
+        # is actually present; -A x64 alone is safe to keep regardless.
         run: cmake -B build -S . -A x64
 
       - name: Build flux_app
         working-directory: dev
         run: cmake --build build --target flux_app --config Debug
+
+  linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout charts (with pinned flux submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Package list copied verbatim from flux's own confirmed-working
+      # Linux CI workflow - not re-derived, so it carries the same
+      # confidence flux's own build already has.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            ninja-build \
+            libsdl2-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libjpeg-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libasound2-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libssl-dev \
+            pkg-config
+
+      - name: Cache dev/build
+        uses: actions/cache@v4
+        with:
+          path: dev/build
+          key: >-
+            linux-dev-build-
+            ${{ hashFiles('dev/external/flux/.git', 'dev/CMakeLists.txt', 'dev/config/**') }}
+
+      - name: Configure
+        working-directory: dev
+        run: cmake -B build -S . -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build flux_app
+        working-directory: dev
+        run: cmake --build build --target flux_app --parallel
